@@ -2,6 +2,7 @@
 #include <d3dx11.h>
 #include <xnamath.h>
 #include <d3dcompiler.h>
+#include "stdio.h"
 
 #include "Hook.h"
 #include "ImGui/imgui.h"
@@ -32,12 +33,16 @@ ID3D11Device* pDevice;
 ID3D11DeviceContext* pDeviceContext;
 ID3D11RenderTargetView* pRenderTargetView;
 
-ResizeBuffers oResizeBuffers;
-HRESULT WINAPI hResizeBuffers(IDXGISwapChain* pSwapChain, UINT BufferCount, UINT Width, UINT Height,DXGI_FORMAT NewFormat, UINT SwapChainFlags) {
+void CleanupRenderTargetView() {
     if (pRenderTargetView) {
         pRenderTargetView->Release();
         pRenderTargetView = nullptr;
     }
+}
+
+ResizeBuffers oResizeBuffers;
+HRESULT WINAPI hResizeBuffers(IDXGISwapChain* pSwapChain, UINT BufferCount, UINT Width, UINT Height,DXGI_FORMAT NewFormat, UINT SwapChainFlags) {
+    CleanupRenderTargetView();
     return oResizeBuffers(pSwapChain, BufferCount, Width, Height, NewFormat, SwapChainFlags);
 }
 
@@ -87,6 +92,36 @@ HRESULT WINAPI hPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flag
     return oPresent(pSwapChain, SyncInterval, Flags);
 }
 
+void CleanupImGui() {
+    if (ImGui::GetCurrentContext()) {
+        if (ImGui::GetIO().BackendRendererUserData)
+            ImGui_ImplDX11_Shutdown();
+
+        if (ImGui::GetIO().BackendPlatformUserData)
+            ImGui_ImplWin32_Shutdown();
+
+        ImGui::DestroyContext();
+    }
+}
+
+void CleanupDirect() {
+    pDevice->Release();
+    pRenderTargetView = nullptr;
+
+    pDeviceContext->Release();
+    pRenderTargetView = nullptr;
+}
+
+void Unload() {
+    Hook::UnhookAll();
+
+    CleanupImGui();
+    CleanupRenderTargetView();
+    CleanupDirect();
+
+    SetWindowLongPtr(window, GWLP_WNDPROC, (LONG_PTR)(oWndProc));
+}
+
 void GetSwapChainVMT(void* vmt, size_t sizeVmt) {
     IDXGISwapChain* pFakeSwapChain{};
 
@@ -116,6 +151,23 @@ void WINAPI Main(HMODULE hModule) {
     oResizeBuffers = (ResizeBuffers)vmt[13];
     Hook::HookFunction(hPresent, (void**)&oPresent, 5);
     Hook::HookFunction(hResizeBuffers, (void**)&oResizeBuffers, 5);
+#ifdef _DEBUG
+    FILE* file;
+    AllocConsole();
+    freopen_s(&file, "CONOUT$", "w", stdout);
+    printf("Hello world");
+
+    while (true) {
+        Sleep(50);
+        if (GetAsyncKeyState(VK_END) & 1)
+            break;
+    }
+
+    fclose(file);
+    FreeConsole();
+    Unload();
+    FreeLibraryAndExitThread(static_cast<HMODULE>(hModule), 0);
+#endif // _DEBUG
 }
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved)
@@ -123,10 +175,11 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReser
     switch (ul_reason_for_call)
     {
     case DLL_PROCESS_ATTACH:
+        DisableThreadLibraryCalls(hModule);
         CreateThread(nullptr, 0, (LPTHREAD_START_ROUTINE)Main, hModule, 0, nullptr);
-    case DLL_THREAD_ATTACH:
-    case DLL_THREAD_DETACH:
+        break;
     case DLL_PROCESS_DETACH:
+        Unload();
         break;
     }
     return TRUE;
