@@ -106,10 +106,10 @@ void CleanupImGui() {
 
 void CleanupDirect() {
     pDevice->Release();
-    pRenderTargetView = nullptr;
+    pDevice = nullptr;
 
     pDeviceContext->Release();
-    pRenderTargetView = nullptr;
+    pDeviceContext = nullptr;
 }
 
 void Unload() {
