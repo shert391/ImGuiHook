@@ -178,9 +178,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReser
         DisableThreadLibraryCalls(hModule);
         CreateThread(nullptr, 0, (LPTHREAD_START_ROUTINE)Main, hModule, 0, nullptr);
         break;
-    case DLL_PROCESS_DETACH:
-        Unload();
-        break;
     }
     return TRUE;
 }
